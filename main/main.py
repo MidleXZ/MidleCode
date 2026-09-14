@@ -18,7 +18,7 @@ ctk.set_default_color_theme("blue")
 
 class MidleCodeStudio(ctk.CTk):
     def __init__(self):
-        ctk.CTk.__init__(self)
+        super().__init__()
 
         self.title("MidleCode Studio")
         self.geometry("1100x700")
@@ -27,6 +27,17 @@ class MidleCodeStudio(ctk.CTk):
         self.is_processing = False
         self.current_project_dir = None
         self.active_file_path = None
+
+        # Supported target languages for AI conversion
+        self.supported_languages = {
+            "Python (.py)": {"ext": ".py", "lang": "Python"},
+            "JavaScript (.js)": {"ext": ".js", "lang": "JavaScript"},
+            "C (.c)": {"ext": ".c", "lang": "C"},
+            "C++ (.cpp)": {"ext": ".cpp", "lang": "C++"},
+            "Rust (.rs)": {"ext": ".rs", "lang": "Rust"},
+            "TypeScript (.ts)": {"ext": ".ts", "lang": "TypeScript"},
+            "R (.r)": {"ext": ".r", "lang": "R"}
+        }
 
         self.projects_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "projects"))
         os.makedirs(self.projects_dir, exist_ok=True)
@@ -54,9 +65,20 @@ class MidleCodeStudio(ctk.CTk):
         self.btn_run.pack(side="right", padx=(5, 15), pady=8)
 
         self.btn_convert = ctk.CTkButton(
-            self.top_bar, text="⚡ Convert to .py", command=self.start_conversion, fg_color="#007ACC", width=120
+            self.top_bar, text="⚡ Convert Code", command=self.start_conversion, fg_color="#007ACC", width=120
         )
         self.btn_convert.pack(side="right", padx=5, pady=8)
+
+        # Target Language Dropdown
+        self.selected_lang_var = ctk.StringVar(value="Python (.py)")
+        self.lang_dropdown = ctk.CTkOptionMenu(
+            self.top_bar, 
+            values=list(self.supported_languages.keys()),
+            variable=self.selected_lang_var,
+            width=130,
+            command=self._on_language_change
+        )
+        self.lang_dropdown.pack(side="right", padx=5, pady=8)
 
         self.lbl_status = ctk.CTkLabel(self.top_bar, text="Status: Ready", text_color="gray")
         self.lbl_status.pack(side="right", padx=15)
@@ -87,13 +109,17 @@ class MidleCodeStudio(ctk.CTk):
         self.tabs.grid(row=1, column=1, padx=10, pady=5, sticky="nsew")
 
         self.tab_dsl = self.tabs.add("Script Editor (.midlecode)")
-        self.tab_py = self.tabs.add("Compiled Python (.py)")
+        self.tab_py = self.tabs.add("Compiled Target Code")
 
         self.txt_dsl = ctk.CTkTextbox(self.tab_dsl, font=("Courier", 14))
         self.txt_dsl.pack(fill="both", expand=True, padx=5, pady=5)
 
         self.txt_py = ctk.CTkTextbox(self.tab_py, font=("Courier", 14))
         self.txt_py.pack(fill="both", expand=True, padx=5, pady=5)
+
+    def _on_language_change(self, choice):
+        lang_info = self.supported_languages.get(choice, {"ext": ".py"})
+        self.btn_convert.configure(text=f"⚡ Convert to {lang_info['ext']}")
 
     def open_project_launcher(self):
         """Startup Launcher Window"""
@@ -127,7 +153,6 @@ class MidleCodeStudio(ctk.CTk):
                 p_dir = os.path.join(self.projects_dir, name)
                 if not os.path.exists(p_dir):
                     os.makedirs(p_dir)
-                    # Creates blank default file
                     with open(os.path.join(p_dir, "main.midlecode"), "w") as f:
                         f.write("")
                     self.load_project(p_dir)
@@ -163,6 +188,7 @@ class MidleCodeStudio(ctk.CTk):
 
     def refresh_file_explorer(self):
         for child in self.file_tree_frame.winfo_children():
+            child.unbind_all("<Configure>")
             child.destroy()
 
         if not self.current_project_dir:
@@ -196,7 +222,7 @@ class MidleCodeStudio(ctk.CTk):
     def create_file(self):
         name = simpledialog.askstring("New File", "Enter file name (e.g. app.midlecode):")
         if name:
-            if not name.endswith(".midlecode") and not name.endswith(".py"):
+            if not "." in name:
                 name += ".midlecode"
             path = os.path.join(self.current_project_dir, name)
             with open(path, "w") as f:
@@ -254,17 +280,22 @@ class MidleCodeStudio(ctk.CTk):
 
             self.lbl_status.configure(text="Status: Compiling...")
             dsl_input = self.txt_dsl.get("1.0", tk.END).strip()
-            py_code = convert_dsl_to_python(self.llm, dsl_input)
+
+            lang_choice = self.selected_lang_var.get()
+            lang_info = self.supported_languages.get(lang_choice, {"ext": ".py", "lang": "Python"})
+
+            compiled_code = convert_dsl_to_python(self.llm, dsl_input, target_language=lang_info["lang"])
 
             self.txt_py.delete("1.0", tk.END)
-            self.txt_py.insert("1.0", py_code)
+            self.txt_py.insert("1.0", compiled_code)
 
-            output_py = os.path.join(self.current_project_dir, "app.py")
-            with open(output_py, "w") as f:
-                f.write(py_code)
+            output_filename = f"app{lang_info['ext']}"
+            output_path = os.path.join(self.current_project_dir, output_filename)
+            with open(output_path, "w") as f:
+                f.write(compiled_code)
 
-            self.lbl_status.configure(text="Status: Conversion Done!")
-            self.tabs.set("Compiled Python (.py)")
+            self.lbl_status.configure(text=f"Status: Converted to {lang_info['lang']}!")
+            self.tabs.set("Compiled Target Code")
             self.refresh_file_explorer()
         except Exception as e:
             self.lbl_status.configure(text=f"Error: {str(e)}")
@@ -280,7 +311,7 @@ class MidleCodeStudio(ctk.CTk):
             python_executable = sys.executable
             subprocess.Popen([python_executable, py_file])
         else:
-            self.lbl_status.configure(text="No app.py file to run.")
+            self.lbl_status.configure(text="No app.py found to run.")
 
 if __name__ == "__main__":
     app = MidleCodeStudio()
