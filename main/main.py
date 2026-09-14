@@ -65,7 +65,7 @@ class MidleCodeStudio(ctk.CTk):
         self.btn_run.pack(side="right", padx=(5, 15), pady=8)
 
         self.btn_convert = ctk.CTkButton(
-            self.top_bar, text="⚡ Convert Code", command=self.start_conversion, fg_color="#007ACC", width=120
+            self.top_bar, text="⚡ Convert to .py", command=self.start_conversion, fg_color="#007ACC", width=120
         )
         self.btn_convert.pack(side="right", padx=5, pady=8)
 
@@ -187,8 +187,8 @@ class MidleCodeStudio(ctk.CTk):
             self.open_file(main_file)
 
     def refresh_file_explorer(self):
+        # Safely clear UI children without breaking Tkinter bindings
         for child in self.file_tree_frame.winfo_children():
-            child.unbind_all("<Configure>")
             child.destroy()
 
         if not self.current_project_dir:
@@ -308,8 +308,12 @@ class MidleCodeStudio(ctk.CTk):
             return
         py_file = os.path.join(self.current_project_dir, "app.py")
         if os.path.exists(py_file):
+            env = os.environ.copy()
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
+            
             python_executable = sys.executable
-            subprocess.Popen([python_executable, py_file])
+            subprocess.Popen([python_executable, py_file], env=env)
         else:
             self.lbl_status.configure(text="No app.py found to run.")
 
