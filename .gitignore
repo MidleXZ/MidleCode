@@ -1,0 +1,7 @@
+venv/
+models/
+__pycache__/
+projects/
+models/
+ai-loader-and-output/
+*.pyc
